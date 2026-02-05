@@ -1,10 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from openai import OpenAI
 import os
-
-print("🔥 MAIN.PY LOADED 🔥")
 
 app = FastAPI()
 
@@ -16,8 +13,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class GenerateRequest(BaseModel):
     angry_message: str
@@ -47,8 +42,14 @@ Output:
 
 @app.post("/generate")
 async def generate_reply(req: GenerateRequest):
+    # Import OpenAI here, not at module level
+    from openai import OpenAI
+    
     if not req.angry_message or len(req.angry_message.strip()) < 10:
         raise HTTPException(status_code=400, detail="Message too short")
+    
+    # Initialize client inside the function
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     # Build user prompt
     user_prompt = f"Customer message:\n{req.angry_message}\n\n"
