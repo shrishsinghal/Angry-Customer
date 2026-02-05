@@ -2,10 +2,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import httpx
 
 app = FastAPI()
 
-# CORS - allow frontend to call this
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,16 +42,9 @@ Output:
 
 @app.post("/generate")
 async def generate_reply(req: GenerateRequest):
-    # Import OpenAI here, not at module level
-    from openai import OpenAI
-    
     if not req.angry_message or len(req.angry_message.strip()) < 10:
         raise HTTPException(status_code=400, detail="Message too short")
     
-    # Initialize client inside the function
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    # Build user prompt
     user_prompt = f"Customer message:\n{req.angry_message}\n\n"
     
     if req.platform:
@@ -63,23 +56,35 @@ async def generate_reply(req: GenerateRequest):
     user_prompt += "Write a professional, de-escalating reply:"
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-            max_tokens=500
-        )
-        
-        reply = response.choices[0].message.content.strip()
-        
-        return {"reply": reply}
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('GROQ_API_KEY')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.1-70b-versatile",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 500
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"API error: {response.text}")
+            
+            data = response.json()
+            reply = data["choices"][0]["message"]["content"].strip()
+            
+            return {"reply": reply}
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 @app.get("/")
 async def root():
