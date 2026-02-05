@@ -80,6 +80,7 @@ async def generate_reply(req: GenerateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
 
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Customer reply generator API"}
