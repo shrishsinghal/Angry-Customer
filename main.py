@@ -64,7 +64,7 @@ async def generate_reply(req: GenerateRequest):
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.1-70b-versatile",
+                    "model": "llama-3.3-70b-versatile",
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": user_prompt}
