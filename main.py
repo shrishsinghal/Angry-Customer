@@ -3,6 +3,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import httpx
+from bs4 import BeautifulSoup
+
+
+async def fetch_policy_from_url(url: str) -> str:
+    """Fetch and extract text from a policy URL"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0, follow_redirects=True)
+            
+            if response.status_code != 200:
+                return ""
+            
+            # Parse HTML and extract text
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remove script and style elements
+            for script in soup(["script", "style", "nav", "footer", "header"]):
+                script.decompose()
+            
+            # Get text and clean it up
+            text = soup.get_text()
+            lines = (line.strip() for line in text.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = ' '.join(chunk for chunk in chunks if chunk)
+            
+            # Limit to 2000 chars to avoid huge prompts
+            return text[:2000]
+    except:
+        return ""
 
 app = FastAPI()
 
@@ -18,6 +47,7 @@ class GenerateRequest(BaseModel):
     angry_message: str
     platform: str | None = None
     company_policy: str | None = None
+    policy_url: str | None = None  # NEW
 
 SYSTEM_PROMPT = """You are an expert customer dispute response writer.
 
@@ -45,16 +75,24 @@ async def generate_reply(req: GenerateRequest):
     if not req.angry_message or len(req.angry_message.strip()) < 10:
         raise HTTPException(status_code=400, detail="Message too short")
     
+    # Handle policy - either from text or URL
+    policy_text = req.company_policy or ""
+    
+    if req.policy_url and not policy_text:
+        fetched = await fetch_policy_from_url(req.policy_url)
+        if fetched:
+            policy_text = fetched
+    
     user_prompt = f"Customer message:\n{req.angry_message}\n\n"
     
     if req.platform:
         user_prompt += f"Platform: {req.platform}\n\n"
     
-    if req.company_policy and req.company_policy.strip():
-        user_prompt += f"Company Policy:\n{req.company_policy}\n\n"
+    if policy_text.strip():
+        user_prompt += f"Company Policy:\n{policy_text}\n\n"
     
     user_prompt += "Write a professional, de-escalating reply:"
-    
+        
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
